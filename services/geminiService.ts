@@ -30,13 +30,12 @@ export const generateStudioImage = async (
     const prompt = THEME_PROMPTS[theme] || theme;
     const modelName = useHighQuality ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
     
-    const config: any = {};
-    if (useHighQuality) {
-      config.imageConfig = {
+    const config: any = {
+      imageConfig: {
         aspectRatio: "1:1",
-        imageSize: "1K"
-      };
-    }
+        imageSize: useHighQuality ? "1K" : undefined
+      }
+    };
 
     const response = await ai.models.generateContent({
       model: modelName,
@@ -49,7 +48,7 @@ export const generateStudioImage = async (
             },
           },
           {
-            text: `基于此原图复刻面部，生成风格写真：${prompt}。保持面部一致性，1024x1024高清。`,
+            text: `基于此原图复刻面部特征，生成风格写真：${prompt}。保持面部特征一致，高清渲染。`,
           },
         ],
       },
@@ -57,11 +56,11 @@ export const generateStudioImage = async (
     });
 
     if (response.promptFeedback?.blockReason) {
-      throw new Error(`SAFETY: 内容被系统拦截 (${response.promptFeedback.blockReason})`);
+      throw new Error(`SAFETY: 内容被拦截 (${response.promptFeedback.blockReason})`);
     }
 
     const candidate = response.candidates?.[0];
-    if (!candidate) throw new Error('EMPTY: 未能生成内容');
+    if (!candidate) throw new Error('EMPTY: 模型未返回结果');
 
     let imageUrl = '';
     if (candidate.content?.parts) {
@@ -73,12 +72,18 @@ export const generateStudioImage = async (
       }
     }
 
-    if (!imageUrl) throw new Error('NO_IMAGE: 响应中无图像数据');
+    if (!imageUrl) throw new Error('NO_IMAGE: 响应中不含图片');
     return imageUrl;
   } catch (error: any) {
-    const msg = error.message || '';
-    if (msg.includes('429')) throw new Error('QUOTA_EXHAUSTED');
-    if (msg.includes('403')) throw new Error('PERMISSION_DENIED');
+    const msg = JSON.stringify(error);
+    console.error('API Error Details:', error);
+    
+    if (msg.includes('429') || msg.includes('limit: 0')) {
+      throw new Error('QUOTA_0'); // 特殊代码，UI识别后弹出选Key框
+    }
+    if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+      throw new Error('AUTH_ERROR');
+    }
     throw error;
   }
 };

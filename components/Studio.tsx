@@ -12,24 +12,21 @@ const THEMES = [
   ThemeType.Cinematic
 ];
 
-const LOADING_STEPS = ["分析特征...", "构建构图...", "计算光影...", "注入色调...", "细节渲染...", "胶片冲印..."];
-
 const IndividualLoadingProgress: React.FC<{ theme: string }> = ({ theme }) => {
   const [progress, setProgress] = useState(0);
-  const [stepIndex, setStepIndex] = useState(0);
   useEffect(() => {
-    const i = setInterval(() => setProgress(p => p >= 98 ? 98 : p + (p < 50 ? 2 : 0.5)), 200);
-    const si = setInterval(() => setStepIndex(p => (p + 1) % LOADING_STEPS.length), 2500);
-    return () => { clearInterval(i); clearInterval(si); };
+    const i = setInterval(() => setProgress(p => p >= 98 ? 98 : p + 0.5), 100);
+    return () => clearInterval(i);
   }, []);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-zinc-950">
-      <div className="relative w-16 h-16 mb-6">
-        <div className="absolute inset-0 border-2 border-zinc-800 rounded-full" />
-        <div className="absolute inset-0 border-2 border-t-white rounded-full animate-spin" />
+      <div className="w-12 h-12 border border-zinc-800 rounded-full flex items-center justify-center mb-4">
+        <div className="w-8 h-8 border-2 border-t-white border-zinc-900 rounded-full animate-spin" />
       </div>
-      <h4 className="text-[10px] tracking-widest text-zinc-500 uppercase mb-2">{theme}</h4>
-      <p className="text-[11px] text-zinc-400 font-serif-elegant italic">{LOADING_STEPS[stepIndex]} {Math.floor(progress)}%</p>
+      <span className="text-[10px] text-zinc-500 tracking-widest uppercase mb-2">{theme}</span>
+      <div className="w-24 h-[1px] bg-zinc-900 relative">
+        <div className="absolute inset-y-0 left-0 bg-white transition-all duration-300" style={{ width: `${progress}%` }} />
+      </div>
     </div>
   );
 };
@@ -44,9 +41,12 @@ export const Studio: React.FC = () => {
     try {
       // @ts-ignore
       await window.aistudio.openSelectKey();
+      // 成功后强制刷新并使用 HQ 模式
       setUseHighQuality(true);
       if (lastUpload) {
         startGeneration(lastUpload.base64, lastUpload.type, true);
+      } else {
+        alert("API Key 已更新，请上传照片开始。");
       }
     } catch (e) {
       console.error(e);
@@ -72,8 +72,8 @@ export const Studio: React.FC = () => {
 
     for (let i = 0; i < THEMES.length; i++) {
       try {
-        // 增加延迟，防止并发过高
-        if (i > 0) await new Promise(r => setTimeout(r, 2500));
+        // 每个请求间隔更长一点，避免 429
+        if (i > 0) await new Promise(r => setTimeout(r, 4000));
         
         const url = await generateStudioImage(base64, THEMES[i], isHQ, mimeType);
         setResults(prev => prev.map((item, idx) => idx === i ? { ...item, imageUrl: url, loading: false } : item));
@@ -84,82 +84,105 @@ export const Studio: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12">
-      <header className="mb-16 text-center">
-        <h1 className="text-5xl font-serif-elegant tracking-tighter mb-4">幻影写真馆</h1>
-        <div className="flex items-center justify-center space-x-6 text-[10px] tracking-widest text-zinc-500 uppercase">
-          <span>AI Fine Art Photography</span>
-          <div className="h-3 w-px bg-zinc-800" />
+    <div className="max-w-7xl mx-auto px-6 py-12 md:py-24">
+      <header className="mb-20 text-center space-y-6">
+        <h1 className="text-5xl md:text-8xl font-serif-elegant tracking-tighter">幻影写真馆</h1>
+        <div className="flex flex-wrap items-center justify-center gap-6 text-[10px] tracking-widest text-zinc-500 uppercase">
+          <span className="flex items-center"><div className="w-1 h-1 bg-green-500 rounded-full mr-2" /> 系统状态: 在线</span>
+          <div className="h-3 w-px bg-zinc-800 hidden md:block" />
+          <button onClick={handleSelectKey} className="hover:text-white transition-colors underline underline-offset-4">更换 API KEY</button>
+          <div className="h-3 w-px bg-zinc-800 hidden md:block" />
           <label className="flex items-center cursor-pointer group">
             <input 
               type="checkbox" 
               checked={useHighQuality} 
               onChange={(e) => setUseHighQuality(e.target.checked)}
-              className="mr-2 accent-white"
+              className="mr-2 accent-white w-3 h-3"
             />
-            <span className={useHighQuality ? 'text-white' : 'group-hover:text-zinc-300'}>高画质模式 (需个人 Key)</span>
+            <span className={useHighQuality ? 'text-white' : 'group-hover:text-zinc-300'}>高画质模式</span>
           </label>
         </div>
       </header>
 
       {!isGenerating && !results.length ? (
-        <div className="border-y border-zinc-900 py-32 flex flex-col items-center">
-          <label className="group px-12 py-5 border border-white cursor-pointer hover:bg-white hover:text-black transition-all">
-            <span className="text-xs tracking-[0.3em] font-bold">上传照片开启实验 / BEGIN</span>
-            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
-          </label>
-          <p className="mt-8 text-[10px] text-zinc-600 tracking-widest uppercase">支持 JPG / PNG / WEBP</p>
+        <div className="border-y border-zinc-900 py-32 flex flex-col items-center group">
+          <div className="relative">
+            <div className="absolute -inset-1 bg-gradient-to-r from-zinc-800 to-zinc-900 rounded blur opacity-25 group-hover:opacity-100 transition duration-1000"></div>
+            <label className="relative px-16 py-6 bg-black border border-zinc-800 cursor-pointer flex flex-col items-center">
+              <span className="text-sm tracking-[0.4em] font-bold mb-2">上传影像 / UPLOAD</span>
+              <span className="text-[9px] text-zinc-600 tracking-widest">START ARTISTIC TRANSFORMATION</span>
+              <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+            </label>
+          </div>
+          <p className="mt-12 text-[10px] text-zinc-700 tracking-[0.3em] uppercase">Recommended: Portrait photo with clear face</p>
         </div>
       ) : (
-        <>
-          <div className="mb-12 flex justify-between items-center border-b border-zinc-900 pb-4">
-            <div className="text-[10px] tracking-widest text-zinc-500 uppercase">
-              {results.every(r => !r.loading) ? '冲印完成 / FINISHED' : '实验室冲印中 / IN PROGRESS'}
+        <div className="space-y-12">
+          <div className="flex justify-between items-end border-b border-zinc-900 pb-8">
+            <div className="space-y-2">
+              <h2 className="text-xs tracking-[0.3em] text-zinc-400 uppercase">当前状态 / CURRENT STATUS</h2>
+              <p className="text-xl font-serif-elegant italic text-zinc-200">
+                {results.every(r => !r.loading) ? '影像冲印已完成' : '实验员正在暗房冲印...'}
+              </p>
             </div>
-            <button onClick={() => window.location.reload()} className="text-[10px] text-zinc-700 hover:text-white uppercase tracking-widest">重置 / RESET</button>
+            <button onClick={() => window.location.reload()} className="text-[10px] text-zinc-600 hover:text-white uppercase tracking-widest border border-zinc-800 px-4 py-2 hover:bg-zinc-900 transition-all">重新开始 / RESET</button>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
             {results.map((item) => (
-              <div key={item.id} className="relative aspect-[3/4] bg-zinc-950 border border-zinc-900 overflow-hidden">
+              <div key={item.id} className="group relative aspect-[3/4] bg-zinc-950 border border-zinc-900 overflow-hidden shadow-2xl">
                 {item.loading ? (
                   <IndividualLoadingProgress theme={item.theme} />
                 ) : item.error ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                    <span className="text-red-900 text-xs mb-4">!</span>
-                    <h4 className="text-[10px] text-zinc-600 uppercase mb-4">{item.theme}</h4>
-                    {item.error === 'QUOTA_EXHAUSTED' ? (
-                      <div className="space-y-4">
-                        <p className="text-[10px] text-zinc-400">系统配额已耗尽，请使用个人 API Key 以获得无限生成次数和更高画质。</p>
-                        <button 
-                          onClick={handleSelectKey}
-                          className="px-4 py-2 border border-zinc-700 text-[10px] hover:border-white transition-colors"
-                        >
-                          使用个人 Key (推荐)
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-[9px] text-zinc-500 font-mono">{item.error}</p>
-                    )}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center space-y-6">
+                    <div className="w-12 h-12 border border-red-950 rounded-full flex items-center justify-center">
+                      <span className="text-red-900 text-lg">!</span>
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] text-zinc-600 uppercase mb-4 tracking-widest">{item.theme}</h4>
+                      {item.error === 'QUOTA_0' ? (
+                        <div className="space-y-6">
+                          <p className="text-[10px] text-zinc-400 leading-relaxed uppercase tracking-tighter">
+                            当前项目配额受限 (Limit 0)。<br/>请切换 API KEY 或更换 Google 账号再次尝试。
+                          </p>
+                          <button 
+                            onClick={handleSelectKey}
+                            className="w-full py-3 bg-white text-black text-[10px] font-bold tracking-widest hover:bg-zinc-200 transition-colors"
+                          >
+                            切换个人 API KEY
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[9px] text-zinc-500 font-mono leading-relaxed bg-zinc-900/50 p-4 border border-zinc-900">{item.error}</p>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <img src={item.imageUrl} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
-                      <h3 className="text-lg font-serif-elegant mb-4">{item.theme}</h3>
-                      <a href={item.imageUrl} download={`${item.theme}.png`} className="text-[10px] border-b border-zinc-500 pb-1 w-fit">保存作品</a>
+                    <img src={item.imageUrl} className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-700 flex flex-col justify-end p-8">
+                      <div className="translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
+                        <span className="text-[10px] tracking-widest text-zinc-500 mb-2 block uppercase">Aesthetic Artifact</span>
+                        <h3 className="text-2xl font-serif-elegant mb-6">{item.theme}</h3>
+                        <a href={item.imageUrl} download={`${item.theme}.png`} className="inline-block px-6 py-2 border border-zinc-700 text-[10px] tracking-widest hover:bg-white hover:text-black transition-all">保存影像 / DOWNLOAD</a>
+                      </div>
                     </div>
+                    <div className="absolute top-6 left-6 text-[9px] tracking-[0.3em] text-white/40 font-mono">#{item.theme}</div>
                   </>
                 )}
               </div>
             ))}
           </div>
-        </>
+        </div>
       )}
       
-      <div className="mt-24 text-center text-[9px] text-zinc-800 tracking-[0.5em] uppercase">
-        Visual Laboratory / Aesthetic Computing
-      </div>
+      <footer className="mt-32 pt-12 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between text-zinc-800 text-[9px] tracking-[0.4em] uppercase">
+        <div className="mb-4 md:mb-0">AESTHETIC COMPUTING LAB / v2.1</div>
+        <div className="flex gap-8">
+          <span>Processing Unit: Gemini 2.5 Flash</span>
+          <span>Optical Engine: Nano Banana</span>
+        </div>
+      </footer>
     </div>
   );
 };
