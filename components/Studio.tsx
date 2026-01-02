@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ThemeType, GenerationResult } from '../types';
 import { generateStudioImage } from '../services/geminiService';
 
@@ -11,6 +11,8 @@ const THEMES = [
 export const Studio: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState<GenerationResult[]>([]);
+  // 使用 ref 记录当前生成任务的 ID，用于在重置后终止旧的任务回调
+  const activeGenerationId = useRef(0);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -24,19 +26,45 @@ export const Studio: React.FC = () => {
   };
 
   const startGeneration = async (base64: string, mimeType: string) => {
+    // 每次开始生成，ID 加 1
+    const currentId = ++activeGenerationId.current;
     setIsGenerating(true);
     setResults(THEMES.map(theme => ({ id: Math.random().toString(), theme, imageUrl: '', loading: true })));
 
     for (let i = 0; i < THEMES.length; i++) {
       try {
+        // 检查任务是否已被重置
+        if (currentId !== activeGenerationId.current) return;
+
         // 串行请求并保留合理间隔以确保稳定性
         if (i > 0) await new Promise(r => setTimeout(r, 4500));
+        
+        // 再次检查，防止在延时期间被重置
+        if (currentId !== activeGenerationId.current) return;
+
         const url = await generateStudioImage(base64, THEMES[i], mimeType);
-        setResults(prev => prev.map((item, idx) => idx === i ? { ...item, imageUrl: url, loading: false } : item));
+        
+        // 最终检查并更新状态
+        if (currentId === activeGenerationId.current) {
+          setResults(prev => prev.map((item, idx) => idx === i ? { ...item, imageUrl: url, loading: false } : item));
+        }
       } catch (err: any) {
-        setResults(prev => prev.map((item, idx) => idx === i ? { ...item, loading: false, error: err.message } : item));
+        if (currentId === activeGenerationId.current) {
+          setResults(prev => prev.map((item, idx) => idx === i ? { ...item, loading: false, error: err.message } : item));
+        }
       }
     }
+    
+    if (currentId === activeGenerationId.current) {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleReset = () => {
+    // 自增 ID 使得之前的循环任务失效
+    activeGenerationId.current++;
+    setIsGenerating(false);
+    setResults([]);
   };
 
   const handleDownloadAll = () => {
@@ -94,7 +122,7 @@ export const Studio: React.FC = () => {
                 </button>
               )}
               <button 
-                onClick={() => window.location.reload()} 
+                onClick={handleReset} 
                 className="text-[10px] text-zinc-500 hover:text-white uppercase tracking-widest border border-zinc-800 px-6 py-2 transition-all"
               >
                 重置 / RESET
