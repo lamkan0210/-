@@ -31,18 +31,12 @@ export const Studio: React.FC = () => {
     setIsGenerating(true);
     setResults(THEMES.map(theme => ({ id: Math.random().toString(), theme, imageUrl: '', loading: true })));
 
-    for (let i = 0; i < THEMES.length; i++) {
+    // 并行触发所有生成请求，不再进行串行等待
+    const tasks = THEMES.map(async (theme, i) => {
       try {
-        // 检查任务是否已被重置
         if (currentId !== activeGenerationId.current) return;
 
-        // 串行请求并保留合理间隔以确保稳定性
-        if (i > 0) await new Promise(r => setTimeout(r, 4500));
-        
-        // 再次检查，防止在延时期间被重置
-        if (currentId !== activeGenerationId.current) return;
-
-        const url = await generateStudioImage(base64, THEMES[i], mimeType);
+        const url = await generateStudioImage(base64, theme, mimeType);
         
         // 最终检查并更新状态
         if (currentId === activeGenerationId.current) {
@@ -53,7 +47,10 @@ export const Studio: React.FC = () => {
           setResults(prev => prev.map((item, idx) => idx === i ? { ...item, loading: false, error: err.message } : item));
         }
       }
-    }
+    });
+
+    // 等待所有任务（无论成功失败）结束
+    await Promise.allSettled(tasks);
     
     if (currentId === activeGenerationId.current) {
       setIsGenerating(false);
@@ -109,7 +106,7 @@ export const Studio: React.FC = () => {
             <div className="space-y-1">
               <h2 className="text-[10px] tracking-[0.3em] text-zinc-500 uppercase">暗房进度 / PROGRESS</h2>
               <p className="text-xl font-serif-elegant italic text-zinc-200">
-                {isAllComplete ? '影像已全部冲印完成' : '实验员正在精细处理中...'}
+                {isAllComplete ? '影像已全部冲印完成' : '实验员正在全速冲印中...'}
               </p>
             </div>
             <div className="flex gap-4">
