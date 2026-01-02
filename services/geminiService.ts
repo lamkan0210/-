@@ -2,87 +2,57 @@
 import { GoogleGenAI } from "@google/genai";
 import { ThemeType } from "../types";
 
-const getAIClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === "undefined" || apiKey === "") {
-    throw new Error('API_KEY_MISSING');
-  }
-  return new GoogleGenAI({ apiKey });
+const getApiKey = () => {
+  return process.env.API_KEY || "";
 };
 
 const THEME_PROMPTS: Record<string, string> = {
-  [ThemeType.Professional]: "一张极其高级的职业肖像照。人物身着剪裁精良的商务西装，背景是高级的深灰色影棚背景。光效采用伦勃朗布光法，展现出稳重、专业且具有深度的职场精英气质。高清晰度，细节完美。",
-  [ThemeType.Fashion]: "高级时装艺术大片。人物穿着充满设计感的先锋时尚服装，在对比强烈的霓虹光影下。构图充满张力，色彩高级且富有冲击力，展现出超模般的时尚表现力。视觉效果震撼，充满未来感。",
-  [ThemeType.Gallery]: "极简主义美术馆场景中的艺术剪影。人物身处空旷、纯净的艺术空间，正对一面巨大的白色画作或极简装置。柔和的漫反射光线，人物表情空灵、深邃，呈现出一种在艺术空间中游离与沉思的氛围。",
-  [ThemeType.BlackWhite]: "极具戏剧张力的黑白电影感艺术照。利用强烈的光影对比（Chiaroscuro）来刻画人物面部轮廓。细腻的银盐胶片质感，高对比度，情绪深沉而有力。一张能讲故事的艺术作品。",
-  [ThemeType.Magazine]: "经典的《时代周刊》(TIME Magazine) 封面风格。画面必须带有标志性的红色粗边框，顶部有醒目的白色‘TIME’艺术字体标题。人物神情坚毅且具有影响力，采用纪实摄影的高级质感，光效严谨，呈现出极具时代感的封面人物视觉效果。",
-  [ThemeType.Cinematic]: "电影质感的经典剧照肖像。采用2.35:1的宽银幕构图，背景带有电影感的虚化（Bokeh）。冷暖色调的巧妙融合，人物眼神充满叙事感，仿佛是电影中转瞬即逝的动人瞬间。极具大片氛围。"
+  [ThemeType.Professional]: "高级商务肖像，彩色摄影，伦勃朗光效，精致西装，暖色调背景，肤色自然质感。",
+  [ThemeType.Fashion]: "先锋时尚大片，绚丽霓虹光影，高饱和度色彩，高对比度，视觉冲击感极强。",
+  [ThemeType.Gallery]: "极简美术馆，柔和自然的彩色光线，艺术剪影与环境融合，呈现高级的低饱和色彩美学。",
+  [ThemeType.BlackWhite]: "经典黑白艺术肖像，极强光影对比，细腻的银盐质感，深沉的情绪表达。",
+  [ThemeType.Magazine]: "时尚杂志封面风格，红色艺术边框，高清晰度纪实色彩，具有时代感的胶片色调。",
+  [ThemeType.Cinematic]: "电影电影感剧照，2.35:1宽银幕效果，丰富的冷暖色调对比，好莱坞大片色彩渲染。"
 };
 
 export const generateStudioImage = async (
   base64Image: string,
   theme: string,
-  useHighQuality: boolean = false,
   mimeType: string = 'image/jpeg'
 ): Promise<string> => {
-  try {
-    const ai = getAIClient();
-    const prompt = THEME_PROMPTS[theme] || theme;
-    const modelName = useHighQuality ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-    
-    const config: any = {
-      imageConfig: {
-        aspectRatio: "1:1",
-        imageSize: useHighQuality ? "1K" : undefined
-      }
-    };
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('API_KEY_MISSING');
 
+  const ai = new GoogleGenAI({ apiKey });
+  const prompt = THEME_PROMPTS[theme] || theme;
+  // 统一使用稳定且支持图像生成的 nano banana 模型
+  const modelName = 'gemini-2.5-flash-image';
+  
+  try {
     const response = await ai.models.generateContent({
       model: modelName,
       contents: {
         parts: [
-          {
-            inlineData: {
-              data: base64Image,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: `基于此原图复刻面部特征，生成风格写真：${prompt}。保持面部特征一致，高清渲染。`,
-          },
+          { inlineData: { data: base64Image, mimeType } },
+          { text: `人像写真生成：${prompt}。请务必保持面部特征与原图一致。除了明确标注为黑白的风格外，请输出色彩丰富、光影真实的高清彩色图像。` }
         ],
       },
-      config
+      config: {
+        imageConfig: { aspectRatio: "1:1" }
+      }
     });
 
-    if (response.promptFeedback?.blockReason) {
-      throw new Error(`SAFETY: 内容被拦截 (${response.promptFeedback.blockReason})`);
+    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+    if (!part?.inlineData?.data) {
+      if (response.promptFeedback?.blockReason) throw new Error(`安全拦截: ${response.promptFeedback.blockReason}`);
+      throw new Error('未能生成影像数据');
     }
 
-    const candidate = response.candidates?.[0];
-    if (!candidate) throw new Error('EMPTY: 模型未返回结果');
-
-    let imageUrl = '';
-    if (candidate.content?.parts) {
-      for (const part of candidate.content.parts) {
-        if (part.inlineData) {
-          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
-      }
-    }
-
-    if (!imageUrl) throw new Error('NO_IMAGE: 响应中不含图片');
-    return imageUrl;
+    return `data:image/png;base64,${part.inlineData.data}`;
   } catch (error: any) {
-    const msg = JSON.stringify(error);
-    console.error('API Error Details:', error);
-    
-    if (msg.includes('429') || msg.includes('limit: 0')) {
-      throw new Error('QUOTA_0'); // 特殊代码，UI识别后弹出选Key框
-    }
-    if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
-      throw new Error('AUTH_ERROR');
+    const errorStr = JSON.stringify(error);
+    if (errorStr.includes('429') || errorStr.includes('limit: 0') || errorStr.includes('RESOURCE_EXHAUSTED')) {
+      throw new Error('服务器繁忙，请稍后再试');
     }
     throw error;
   }
