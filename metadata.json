@@ -1,5 +1,5 @@
 {
-  "name": "幻影写真馆 - AI 影像实验室",
+  "name": "幻影写真馆",
   "description": "基于 Gemini 2.5 Flash 技术的智能人像写真生成器，一键生成六种不同风格的高级艺术写真。",
   "requestFramePermissions": [
     "camera"

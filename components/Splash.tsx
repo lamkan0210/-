@@ -25,7 +25,7 @@ export const Splash: React.FC<SplashProps> = ({ onComplete }) => {
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black transition-opacity duration-1000">
       <div className="mb-8 overflow-hidden">
         <h1 className="text-4xl md:text-6xl font-serif-elegant tracking-[0.2em] animate-pulse">
-          PHANTOM STUDIO
+          幻影写真馆
         </h1>
       </div>
       
@@ -37,11 +37,11 @@ export const Splash: React.FC<SplashProps> = ({ onComplete }) => {
       </div>
 
       <div className="mt-4 font-mono text-zinc-500 tracking-widest uppercase text-xs">
-        System Loading / {progress}%
+        系统加载中 / {progress}%
       </div>
 
       <div className="absolute bottom-12 text-[10px] text-zinc-700 uppercase tracking-[0.3em]">
-        © 2024 AI Vision Laboratory / All Rights Reserved
+        © 2024 幻影写真馆影像实验室 / 版权所有
       </div>
     </div>
   );
