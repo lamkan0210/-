@@ -39,6 +39,25 @@ export const Studio: React.FC = () => {
     }
   };
 
+  const handleDownloadAll = () => {
+    results.forEach((result, index) => {
+      if (result.imageUrl) {
+        // 使用 setTimeout 稍微错开下载请求，减少浏览器拦截风险
+        setTimeout(() => {
+          const link = document.createElement('a');
+          link.href = result.imageUrl;
+          link.download = `PhantomStudio_${result.theme}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }, index * 200);
+      }
+    });
+  };
+
+  const hasAnyResult = results.some(r => r.imageUrl);
+  const isAllComplete = results.length > 0 && results.every(r => !r.loading);
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-20">
       <header className="mb-20 text-center space-y-4">
@@ -58,14 +77,29 @@ export const Studio: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-16">
-          <div className="flex justify-between items-end border-b border-zinc-900 pb-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-zinc-900 pb-8 gap-6">
             <div className="space-y-1">
               <h2 className="text-[10px] tracking-[0.3em] text-zinc-500 uppercase">暗房进度 / PROGRESS</h2>
               <p className="text-xl font-serif-elegant italic text-zinc-200">
-                {results.every(r => !r.loading) ? '影像已全部冲印完成' : '实验员正在精细处理中...'}
+                {isAllComplete ? '影像已全部冲印完成' : '实验员正在精细处理中...'}
               </p>
             </div>
-            <button onClick={() => window.location.reload()} className="text-[10px] text-zinc-500 hover:text-white uppercase tracking-widest border border-zinc-800 px-6 py-2 transition-all">重置 / RESET</button>
+            <div className="flex gap-4">
+              {hasAnyResult && (
+                <button 
+                  onClick={handleDownloadAll} 
+                  className="text-[10px] text-white bg-zinc-900 hover:bg-white hover:text-black uppercase tracking-widest border border-zinc-700 px-6 py-2 transition-all"
+                >
+                  下载全部 / DOWNLOAD ALL
+                </button>
+              )}
+              <button 
+                onClick={() => window.location.reload()} 
+                className="text-[10px] text-zinc-500 hover:text-white uppercase tracking-widest border border-zinc-800 px-6 py-2 transition-all"
+              >
+                重置 / RESET
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
