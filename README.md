@@ -13,26 +13,19 @@
 | **Framework preset** | **Vite** |
 | **Build command** | `npm run build` |
 | **Build output directory** | `dist` |
-| **Root directory** | `/` (项目根目录) |
 
-### 2. 环境变量设置
-在 **Settings -> Environment variables** 中添加：
-- `API_KEY`: 您的 Google AI Studio API Key。
+### 2. 环境变量设置 (至关重要)
+1. 在 Pages 项目详情页，点击 **Settings -> Environment variables**。
+2. 在 **Production** 和 **Preview** 环境下分别添加变量：
+   - `API_KEY`: 您的 Google AI Studio API Key。
+3. **关键：** 添加完变量后，必须转到 **Deployments** 选项卡，点击最新的部署右侧的三个点，选择 **Retry deployment**。
 
-### 3. 本地开发
-如果您想在本地运行：
-```bash
-npm install
-npm run dev
-```
+## 🔍 常见问题排查 (Troubleshooting)
 
-## ✨ 核心主题
-- 职业肖像照 / Professional Portrait
-- 时尚写真 / Avant-Garde Fashion
-- 美术馆迷失的她 / Gallery Silence
-- 黑白艺术照 / Chiaroscuro Noir
-- 《时代周刊》封面 / TIME Cover (Red Frame)
-- 电影肖像 / Cinematic Frame
+- **显示 "API_KEY_MISSING"**：说明环境变量没有注入成功。请检查 Cloudflare 后台设置并重新构建。
+- **显示 "网络连接失败"**：如果您在中国大陆访问，需要确保您的设备可以正常连接到 `generativelanguage.googleapis.com`。
+- **显示 "SAFETY_ERROR"**：由于 Gemini 的安全政策，部分人像照片（如穿着较少、姿势敏感或疑似受版权保护的人物）可能会被拦截。
+- **生成速度慢**：Gemini 2.5 Flash Image 的平均生成时间为 5-10 秒，请耐心等待。
 
 ---
 © 2024 AI Vision Laboratory / Created for Aesthetic & Art.

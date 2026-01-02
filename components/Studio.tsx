@@ -12,71 +12,24 @@ const THEMES = [
   ThemeType.Cinematic
 ];
 
-const LOADING_STEPS = [
-  "正在分析面部特征...",
-  "构建艺术构图...",
-  "计算环境光影...",
-  "注入风格化色调...",
-  "细节纹理渲染...",
-  "最后的胶片冲印..."
-];
+const LOADING_STEPS = ["分析特征...", "构建构图...", "计算光影...", "注入色调...", "细节渲染...", "胶片冲印..."];
 
 const IndividualLoadingProgress: React.FC<{ theme: string }> = ({ theme }) => {
   const [progress, setProgress] = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
-
   useEffect(() => {
-    // 模拟进度条增长，越往后越慢
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 98) return 98;
-        const increment = prev < 50 ? 2 : prev < 80 ? 1 : 0.5;
-        return prev + increment;
-      });
-    }, 200);
-
-    // 状态文字轮播
-    const stepInterval = setInterval(() => {
-      setStepIndex((prev) => (prev + 1) % LOADING_STEPS.length);
-    }, 2500);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(stepInterval);
-    };
+    const i = setInterval(() => setProgress(p => p >= 98 ? 98 : p + (p < 50 ? 2 : 0.5)), 200);
+    const si = setInterval(() => setStepIndex(p => (p + 1) % LOADING_STEPS.length), 2500);
+    return () => { clearInterval(i); clearInterval(si); };
   }, []);
-
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6 bg-zinc-950">
-      <div className="relative w-20 h-20">
-        {/* 外圈旋转动画 */}
+    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-zinc-950">
+      <div className="relative w-16 h-16 mb-6">
         <div className="absolute inset-0 border-2 border-zinc-800 rounded-full" />
-        <div 
-          className="absolute inset-0 border-2 border-t-white rounded-full animate-spin" 
-          style={{ animationDuration: '1.5s' }}
-        />
-        {/* 中间百分比 */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-[10px] font-mono tracking-tighter text-white">
-            {Math.floor(progress)}%
-          </span>
-        </div>
+        <div className="absolute inset-0 border-2 border-t-white rounded-full animate-spin" />
       </div>
-      
-      <div className="space-y-2">
-        <h4 className="text-[10px] tracking-[0.3em] text-zinc-500 uppercase">{theme}</h4>
-        <p className="text-[11px] text-zinc-400 font-serif-elegant italic animate-pulse transition-all duration-500">
-          {LOADING_STEPS[stepIndex]}
-        </p>
-      </div>
-
-      {/* 底部进度条 */}
-      <div className="absolute bottom-0 left-0 w-full h-[1px] bg-zinc-900 overflow-hidden">
-        <div 
-          className="h-full bg-zinc-500 transition-all duration-300 ease-out"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      <h4 className="text-[10px] tracking-widest text-zinc-500 uppercase mb-2">{theme}</h4>
+      <p className="text-[11px] text-zinc-400 font-serif-elegant italic">{LOADING_STEPS[stepIndex]} {Math.floor(progress)}%</p>
     </div>
   );
 };
@@ -84,136 +37,129 @@ const IndividualLoadingProgress: React.FC<{ theme: string }> = ({ theme }) => {
 export const Studio: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState<GenerationResult[]>([]);
-  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [useHighQuality, setUseHighQuality] = useState(false);
+  const [lastUpload, setLastUpload] = useState<{base64: string, type: string} | null>(null);
+
+  const handleSelectKey = async () => {
+    try {
+      // @ts-ignore
+      await window.aistudio.openSelectKey();
+      setUseHighQuality(true);
+      if (lastUpload) {
+        startGeneration(lastUpload.base64, lastUpload.type, true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = async (e) => {
       const base64 = e.target?.result as string;
-      setUploadPreview(base64);
       const pureBase64 = base64.split(',')[1];
-      
-      await startGeneration(pureBase64, file.type);
+      setLastUpload({ base64: pureBase64, type: file.type });
+      await startGeneration(pureBase64, file.type, useHighQuality);
     };
     reader.readAsDataURL(file);
   };
 
-  const startGeneration = async (base64: string, mimeType: string) => {
+  const startGeneration = async (base64: string, mimeType: string, isHQ: boolean) => {
     setIsGenerating(true);
-    
-    const initialResults: GenerationResult[] = THEMES.map(theme => ({
-      id: Math.random().toString(36).substr(2, 9),
-      theme,
-      imageUrl: '',
-      loading: true
-    }));
-    setResults(initialResults);
+    setResults(THEMES.map(theme => ({ id: Math.random().toString(36).substr(2, 9), theme, imageUrl: '', loading: true })));
 
-    THEMES.forEach(async (theme, index) => {
+    for (let i = 0; i < THEMES.length; i++) {
       try {
-        const url = await generateStudioImage(base64, theme, mimeType);
-        setResults(prev => prev.map((item, i) => 
-          i === index ? { ...item, imageUrl: url, loading: false } : item
-        ));
-      } catch (err) {
-        setResults(prev => prev.map((item, i) => 
-          i === index ? { ...item, loading: false, error: '生成失败，请重试' } : item
-        ));
+        // 增加延迟，防止并发过高
+        if (i > 0) await new Promise(r => setTimeout(r, 2500));
+        
+        const url = await generateStudioImage(base64, THEMES[i], isHQ, mimeType);
+        setResults(prev => prev.map((item, idx) => idx === i ? { ...item, imageUrl: url, loading: false } : item));
+      } catch (err: any) {
+        setResults(prev => prev.map((item, idx) => idx === i ? { ...item, loading: false, error: err.message } : item));
       }
-    });
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12 md:py-24">
-      <header className="mb-20 text-center space-y-4">
-        <h1 className="text-5xl md:text-7xl font-serif-elegant tracking-tighter">幻影写真馆</h1>
-        <p className="text-zinc-500 tracking-[0.2em] text-sm uppercase">AI Fine Art Photography Studio</p>
-      </header>
-
-      {!isGenerating && !results.length && (
-        <div className="flex flex-col items-center justify-center border-y border-zinc-800 py-32 space-y-12">
-          <div className="max-w-xl text-center space-y-6">
-            <h2 className="text-2xl font-serif-elegant italic">上传一张照片，开启您的AI艺术之旅</h2>
-            <p className="text-zinc-400 leading-relaxed text-sm">
-              我们的 AI 实验室将基于您的容貌特征，完美复刻并生成六种不同维度的艺术写真。从职业肖像到电影大片，每一张都由顶级视觉模型精雕细琢。
-            </p>
-          </div>
-          
-          <label className="group relative inline-flex items-center justify-center px-10 py-4 cursor-pointer overflow-hidden border border-white transition-all hover:bg-white hover:text-black">
-            <span className="text-sm tracking-widest font-medium">开始创作 / UPLOAD PHOTO</span>
+    <div className="max-w-7xl mx-auto px-6 py-12">
+      <header className="mb-16 text-center">
+        <h1 className="text-5xl font-serif-elegant tracking-tighter mb-4">幻影写真馆</h1>
+        <div className="flex items-center justify-center space-x-6 text-[10px] tracking-widest text-zinc-500 uppercase">
+          <span>AI Fine Art Photography</span>
+          <div className="h-3 w-px bg-zinc-800" />
+          <label className="flex items-center cursor-pointer group">
             <input 
-              type="file" 
-              className="hidden" 
-              accept="image/*" 
-              onChange={handleFileUpload}
+              type="checkbox" 
+              checked={useHighQuality} 
+              onChange={(e) => setUseHighQuality(e.target.checked)}
+              className="mr-2 accent-white"
             />
+            <span className={useHighQuality ? 'text-white' : 'group-hover:text-zinc-300'}>高画质模式 (需个人 Key)</span>
           </label>
         </div>
-      )}
+      </header>
 
-      {(isGenerating || results.length > 0) && (
-        <div className="mb-12 flex items-center justify-between border-b border-zinc-800 pb-4">
-          <div className="flex items-center space-x-4">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-            <span className="text-xs tracking-widest text-zinc-400 uppercase">
-              {results.every(r => !r.loading) ? '冲印完成 / FINISHED' : '影像实验室正在冲印中 / DEVELOPING FILM...'}
-            </span>
-          </div>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="text-[10px] uppercase tracking-widest text-zinc-600 hover:text-white transition-colors"
-          >
-            重置实验室 / RESET
-          </button>
+      {!isGenerating && !results.length ? (
+        <div className="border-y border-zinc-900 py-32 flex flex-col items-center">
+          <label className="group px-12 py-5 border border-white cursor-pointer hover:bg-white hover:text-black transition-all">
+            <span className="text-xs tracking-[0.3em] font-bold">上传照片开启实验 / BEGIN</span>
+            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+          </label>
+          <p className="mt-8 text-[10px] text-zinc-600 tracking-widest uppercase">支持 JPG / PNG / WEBP</p>
         </div>
-      )}
-
-      {results.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
-          {results.map((item) => (
-            <div key={item.id} className="group relative aspect-[3/4] bg-zinc-950 overflow-hidden border border-zinc-900">
-              {item.loading ? (
-                <IndividualLoadingProgress theme={item.theme} />
-              ) : item.error ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700 p-4 text-center">
-                  <span className="text-xs uppercase tracking-widest mb-2">{item.error}</span>
-                  <p className="text-[10px] text-zinc-800">请刷新页面或检查 API 配置</p>
-                </div>
-              ) : (
-                <>
-                  <img 
-                    src={item.imageUrl} 
-                    alt={item.theme} 
-                    className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-8">
-                    <span className="text-xs tracking-widest text-zinc-400 mb-2">PHANTOM STUDIO</span>
-                    <h3 className="text-xl font-serif-elegant">{item.theme}</h3>
-                    <a 
-                      href={item.imageUrl} 
-                      download={`${item.theme}.png`}
-                      className="mt-4 text-[10px] uppercase tracking-widest border-b border-zinc-500 inline-block w-fit hover:text-white transition-colors"
-                    >
-                      保存作品 / SAVE ARTWORK
-                    </a>
-                  </div>
-                  <div className="absolute top-4 left-4 text-[9px] tracking-[0.2em] text-white/50 bg-black/40 backdrop-blur-md px-2 py-1 uppercase border border-white/10">
-                    {item.theme}
-                  </div>
-                </>
-              )}
+      ) : (
+        <>
+          <div className="mb-12 flex justify-between items-center border-b border-zinc-900 pb-4">
+            <div className="text-[10px] tracking-widest text-zinc-500 uppercase">
+              {results.every(r => !r.loading) ? '冲印完成 / FINISHED' : '实验室冲印中 / IN PROGRESS'}
             </div>
-          ))}
-        </div>
+            <button onClick={() => window.location.reload()} className="text-[10px] text-zinc-700 hover:text-white uppercase tracking-widest">重置 / RESET</button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {results.map((item) => (
+              <div key={item.id} className="relative aspect-[3/4] bg-zinc-950 border border-zinc-900 overflow-hidden">
+                {item.loading ? (
+                  <IndividualLoadingProgress theme={item.theme} />
+                ) : item.error ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                    <span className="text-red-900 text-xs mb-4">!</span>
+                    <h4 className="text-[10px] text-zinc-600 uppercase mb-4">{item.theme}</h4>
+                    {item.error === 'QUOTA_EXHAUSTED' ? (
+                      <div className="space-y-4">
+                        <p className="text-[10px] text-zinc-400">系统配额已耗尽，请使用个人 API Key 以获得无限生成次数和更高画质。</p>
+                        <button 
+                          onClick={handleSelectKey}
+                          className="px-4 py-2 border border-zinc-700 text-[10px] hover:border-white transition-colors"
+                        >
+                          使用个人 Key (推荐)
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-zinc-500 font-mono">{item.error}</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <img src={item.imageUrl} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
+                      <h3 className="text-lg font-serif-elegant mb-4">{item.theme}</h3>
+                      <a href={item.imageUrl} download={`${item.theme}.png`} className="text-[10px] border-b border-zinc-500 pb-1 w-fit">保存作品</a>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
-
-      <footer className="mt-32 pt-12 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between text-zinc-700 text-[10px] tracking-[0.3em] uppercase">
-        <div className="mb-4 md:mb-0">Powered by Gemini 2.5 Flash / Image Lab 1.0</div>
-        <div>Visual Aesthetic / Phantom Studio Lab</div>
-      </footer>
+      
+      <div className="mt-24 text-center text-[9px] text-zinc-800 tracking-[0.5em] uppercase">
+        Visual Laboratory / Aesthetic Computing
+      </div>
     </div>
   );
 };

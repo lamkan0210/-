@@ -2,7 +2,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { ThemeType } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    throw new Error('API_KEY_MISSING');
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 const THEME_PROMPTS: Record<string, string> = {
   [ThemeType.Professional]: "一张极其高级的职业肖像照。人物身着剪裁精良的商务西装，背景是高级的深灰色影棚背景。光效采用伦勃朗布光法，展现出稳重、专业且具有深度的职场精英气质。高清晰度，细节完美。",
@@ -16,13 +22,24 @@ const THEME_PROMPTS: Record<string, string> = {
 export const generateStudioImage = async (
   base64Image: string,
   theme: string,
+  useHighQuality: boolean = false,
   mimeType: string = 'image/jpeg'
 ): Promise<string> => {
   try {
+    const ai = getAIClient();
     const prompt = THEME_PROMPTS[theme] || theme;
+    const modelName = useHighQuality ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
     
+    const config: any = {};
+    if (useHighQuality) {
+      config.imageConfig = {
+        aspectRatio: "1:1",
+        imageSize: "1K"
+      };
+    }
+
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: modelName,
       contents: {
         parts: [
           {
@@ -32,15 +49,23 @@ export const generateStudioImage = async (
             },
           },
           {
-            text: `请基于这张人物原图，完全复刻人物的面部特征，生成一张如下风格的写真照：${prompt}。保持人物面部的一致性是非常关键的，生成结果必须是1024x1024的高清图像。`,
+            text: `基于此原图复刻面部，生成风格写真：${prompt}。保持面部一致性，1024x1024高清。`,
           },
         ],
       },
+      config
     });
 
+    if (response.promptFeedback?.blockReason) {
+      throw new Error(`SAFETY: 内容被系统拦截 (${response.promptFeedback.blockReason})`);
+    }
+
+    const candidate = response.candidates?.[0];
+    if (!candidate) throw new Error('EMPTY: 未能生成内容');
+
     let imageUrl = '';
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
+    if (candidate.content?.parts) {
+      for (const part of candidate.content.parts) {
         if (part.inlineData) {
           imageUrl = `data:image/png;base64,${part.inlineData.data}`;
           break;
@@ -48,13 +73,12 @@ export const generateStudioImage = async (
       }
     }
 
-    if (!imageUrl) {
-      throw new Error('未能生成有效图片数据');
-    }
-
+    if (!imageUrl) throw new Error('NO_IMAGE: 响应中无图像数据');
     return imageUrl;
-  } catch (error) {
-    console.error(`生成 ${theme} 失败:`, error);
+  } catch (error: any) {
+    const msg = error.message || '';
+    if (msg.includes('429')) throw new Error('QUOTA_EXHAUSTED');
+    if (msg.includes('403')) throw new Error('PERMISSION_DENIED');
     throw error;
   }
 };
